@@ -1,31 +1,39 @@
 <!DOCTYPE html>
+
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nhóm 3 - Xuân 2026</title>
+
 <link rel="icon" type="image/png" href="https://i.ibb.co/Df2FMXdG/3-1.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+
 <script src="https://unpkg.com/lucide@latest"></script>
 
 </head>
+
 <body>
 
-
+<canvas id="tetCanvas"></canvas>
 
 <!-- LOGO MOBILE -->
+
 <div class="mobile-logo mobile-header-item" onclick="goHome()">
-  <img src="logo-nhom3.png">
+  <img src="logo-nhom3.png" alt="Logo Nhóm 3">
 </div>
-<!--===STICKER===-->
-
-
 
 <!-- ================= LOADER ================= -->
+
 <div class="loader">
-  <div class="flower"><a href="https://imgbb.com/"><img src="https://i.ibb.co/Df2FMXdG/3-1.png" alt="3 1" border="0"></a></div>
+  <div class="flower">
+    <img src="https://i.ibb.co/Df2FMXdG/3-1.png" alt="Logo loader">
+  </div>
   <div class="credit">
     <div class="from">from</div>
     <div class="group">Nhóm 3</div>
@@ -33,37 +41,37 @@
 </div>
 
 <!-- ================= SIDEBAR ================= -->
+
 <div class="sidebar">
 
-  <!-- Logo -->
   <div class="top-logo">
     <div class="logo-text" onclick="goHome()" style="cursor:pointer">
-       <img src="logo-nhom3.png">
+       <img src="logo-nhom3.png" alt="Logo Nhóm 3">
     </div>
   </div>
 
-  <!-- Menu -->
   <div class="menu">
 
-      <div class="menu-item active" onclick="showPage('home'); setActiveMenu(0)">
-        <i data-lucide="home"></i>
-        <span>Trang chủ</span>
-      </div>
 
-      <div class="menu-item" onclick="showPage('reel'); setActiveMenu(1)">
-        <i data-lucide="clapperboard"></i>
-        <span>Reels</span>
-      </div>
+  <div class="menu-item active" onclick="showPage('home'); setActiveMenu(0)">
+    <i data-lucide="home"></i>
+    <span>Trang chủ</span>
+  </div>
 
-      <div class="menu-item" onclick="showPage('group'); setActiveMenu(2)">
-        <i data-lucide="users"></i>
-        <span>Group</span>
-      </div>
+  <div class="menu-item" onclick="showPage('reel'); setActiveMenu(1)">
+    <i data-lucide="clapperboard"></i>
+    <span>Reels</span>
+  </div>
 
-      <div class="menu-item" onclick="handleCreateClick()">
-  <i data-lucide="plus"></i>
-  <span>Tạo</span>
-</div>
+  <div class="menu-item" onclick="showPage('group'); setActiveMenu(2)">
+    <i data-lucide="users"></i>
+    <span>Group</span>
+  </div>
+
+  <div class="menu-item" onclick="handleCreateClick()">
+    <i data-lucide="plus"></i>
+    <span>Tạo</span>
+  </div>
 
 
   </div>
@@ -80,7 +88,9 @@
 </div>
 
 </div>
+
 <!-- ================= MAIN ================= -->
+
 <main>
 
 <label for="switch" class="switch mobile-header-item">
@@ -92,7 +102,7 @@
 <div id="userBox" class="user-box mobile-header-item" style="display:none;">
 
   <div class="user-top" onclick="toggleUserMenu()">
-    <img id="userAvatar" class="user-avatar">
+    <img id="userAvatar" class="user-avatar" alt="Avatar người dùng">
   </div>
 
   <div id="userMenu" class="user-menu">
@@ -102,297 +112,290 @@
 
 </div>
 
-  <!-- Trang Home -->
+<!-- Trang Home -->
+
 <div id="home" class="page active">
 
   <div class="post-card">
 
-    <div class="post-header">
-      <img src="https://i.pravatar.cc/50" class="avatar">
-      <div>
-        <h4>Admin</h4>
-        <span>1 giờ trước</span>
-      </div>
+
+<div class="post-header">
+  <img src="https://i.pravatar.cc/50" class="avatar" alt="Avatar">
+  <div>
+    <h4>Admin</h4>
+    <span>1 giờ trước</span>
+  </div>
+</div>
+
+<p>Chào Xuân 2026 – Chúc mọi người năm mới an khang 🌸</p>
+
+<div class="post-image">
+  <img src="https://images.unsplash.com/photo-1549068106-b024baf5062d" alt="Ảnh Tết">
+</div>
+
+<div class="post-actions-bar">
+  <div class="left-actions">
+
+    <div class="action like" onclick="likePost(this,'demo')">
+      <i data-lucide="heart"></i>
+      <span>0</span>
     </div>
 
-    <p>Chào Xuân 2026 – Chúc mọi người năm mới an khang 🌸</p>
-
-    <div class="post-image">
-      <img src="https://images.unsplash.com/photo-1549068106-b024baf5062d" alt="Ảnh Tết">
+    <div class="action" onclick="openCommentFromBtn(this)">
+      <i data-lucide="message-circle"></i>
+      <span>0</span>
     </div>
 
-    <div class="post-actions-bar">
-      <div class="left-actions">
-
-        <div class="action like" onclick="likePost(this,'demo')">
-          <i data-lucide="heart"></i>
-          <span>0</span>
-        </div>
-
-        <div class="action" onclick="openCommentFromBtn(this)">
-          <i data-lucide="message-circle"></i>
-          <span>0</span>
-        </div>
-
-        <div class="action" onclick="copyPostLink(this)">
-          <i data-lucide="send"></i>
-        </div>
-
-      </div>
+    <div class="action" onclick="copyPostLink(this)">
+      <i data-lucide="send"></i>
     </div>
+
+  </div>
+</div>
+
 
   </div>  
 
 </div>     
 
-  <!-- Trang Reel -->
+<!-- Trang Reel -->
+
 <div id="reel" class="page">
-
   <div id="reelFeed" class="reel-feed"></div>
-
 </div>
 
+<!-- Trang Group -->
 
-  <!-- Trang Group -->
 <div id="group" class="page">
 
-  <!-- COVER -->
   <div class="profile-cover">
-    <img src="https://i.ibb.co/1Ywh0yKK/z7549873273894-ecaa7cf2ce2a938be8cc337a0c0c7dd2.jpg">
+    <img src="https://i.ibb.co/1Ywh0yKK/z7549873273894-ecaa7cf2ce2a938be8cc337a0c0c7dd2.jpg" alt="Ảnh bìa">
   </div>
 
-  <!-- AVATAR + INFO -->
   <div class="profile-info">
-    <img class="profile-avatar" src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg">
+    <img class="profile-avatar" src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg" alt="Avatar nhóm">
 
-    <div class="profile-text">
-      <h2>Nhóm 3</h2>
-      <p>...</p>
-    </div>
-  </div>
 
-  <!-- ALBUM -->
-<!-- NAV -->
-<div class="profile-nav">
-  <div class="profile-tab active" onclick="openProfileTab('photos',this)">Ảnh</div>
-  <div class="profile-tab" onclick="openProfileTab('members',this)">Thành viên</div>
+<div class="profile-text">
+  <h2>Nhóm 3</h2>
+  <p>...</p>
 </div>
 
-<!-- PHOTOS -->
-<div id="photosTab" class="profile-section">
-  <div id="profilePhotos" class="photo-grid"></div>
-</div>
-
-<!--Thẻ thành viên-->
-<div id="membersTab" class="profile-section" style="display:none;">
-
-  <div class="member-cards">
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-18.jpg">
-      <h3>Lê Thị Ngọc Thà</h3>
-      <p>Thành viên</p>
-      <span>Samantha☘️</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-17.jpg">
-      <h3>Nguyễn Thị Khánh Băng</h3>
-      <p>Thành viên</p>
-      <span>Ba nước đắng🧊</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-14.jpg">
-      <h3>Nguyễn Thiên Ân</h3>
-      <p>Lớp phó</p>
-      <span>Ku Ân🤡</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-7.jpg">
-      <h3>Đặng Quốc Khánh Duy</h3>
-      <p>Tổ trưởng</p>
-      <span>🗿</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-11.jpg">
-      <h3>Nguyễn Thị Kim Nguyên</h3>
-      <p>Thành viên</p>
-      <span>Kiwii🥝</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-13.jpg">
-      <h3>Phan Nguyễn Như Huyền</h3>
-      <p>Thành viên</p>
-      <span>Huiền🐭</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-8.jpg">
-      <h3>Đoàn Trần Phương Uyên</h3>
-      <p>Pu👽</p>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-21.jpg">
-      <h3>Nguyễn Thanh Thảo</h3>
-      <p>Thành viên</p>
-      <span>Thảo bùmm💣</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-45.jpg">
-      <h3>Lưu Thanh Đạt</h3>
-      <p>Thành viên</p>
-      <span>😎</span>
-    </div>
-
-    <div class="member-card">
-      <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-47.jpg">
-      <h3>Trần Quốc Lung</h3>
-      <p>Thành viên</p>
-      <span>Minh Lung🥴</span>
-    </div>
 
   </div>
 
+  <div class="profile-nav">
+    <div class="profile-tab active" onclick="openProfileTab('photos',this)">Ảnh</div>
+    <div class="profile-tab" onclick="openProfileTab('members',this)">Thành viên</div>
+  </div>
+
+  <div id="photosTab" class="profile-section">
+    <div id="profilePhotos" class="photo-grid"></div>
+  </div>
+
+  <div id="membersTab" class="profile-section" style="display:none;">
+
+
+<div class="member-cards">
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-18.jpg">
+    <h3>Lê Thị Ngọc Thà</h3>
+    <p>Thành viên</p>
+    <span>Samantha☘️</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-17.jpg">
+    <h3>Nguyễn Thị Khánh Băng</h3>
+    <p>Thành viên</p>
+    <span>Ba nước đắng🧊</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-14.jpg">
+    <h3>Nguyễn Thiên Ân</h3>
+    <p>Lớp phó</p>
+    <span>Ku Ân🤡</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-7.jpg">
+    <h3>Đặng Quốc Khánh Duy</h3>
+    <p>Tổ trưởng</p>
+    <span>🗿</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-11.jpg">
+    <h3>Nguyễn Thị Kim Nguyên</h3>
+    <p>Thành viên</p>
+    <span>Kiwii🥝</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-13.jpg">
+    <h3>Phan Nguyễn Như Huyền</h3>
+    <p>Thành viên</p>
+    <span>Huiền🐭</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-8.jpg">
+    <h3>Đoàn Trần Phương Uyên</h3>
+    <p>Thành viên</p>
+    <span>Pu👽</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-21.jpg">
+    <h3>Nguyễn Thanh Thảo</h3>
+    <p>Thành viên</p>
+    <span>Thảo bùmm💣</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-45.jpg">
+    <h3>Lưu Thanh Đạt</h3>
+    <p>Thành viên</p>
+    <span>😎</span>
+  </div>
+
+  <div class="member-card">
+    <img src="https://cdn-media.sforum.vn/storage/app/media/ctv_seo3/meme-meo-cuoi-47.jpg">
+    <h3>Trần Quốc Lung</h3>
+    <p>Thành viên</p>
+    <span>Minh Lung🥴</span>
+  </div>
+
 </div>
 
+
+  </div>
 
 </div>
 
 </main>
 
+<!-- ===== MODALS (GIỮ NGUYÊN) ===== -->
+
 <!--FORM BÀI ĐĂNG-->
+
 <div id="createModal" class="modal">
   <div class="fb-modal">
 
-    <!-- header -->
-    <div class="fb-header">
-      <h3>Tạo bài viết</h3>
-      <span class="close-btn" onclick="closeModal()">✕</span>
-    </div>
 
-    <!-- user info -->
-    <div class="fb-user">
-      <img src="https://i.pravatar.cc/50" class="avatar">
-      <div>
-        <div class="name">Admin</div>
-        <div class="privacy">Bạn bè</div>
-      </div>
-    </div>
+<div class="fb-header">
+  <h3>Tạo bài viết</h3>
+  <span class="close-btn" onclick="closeModal()">✕</span>
+</div>
 
-    <!-- caption -->
-    <textarea id="captionInput" class="fb-text"
-      placeholder="Bạn đang nghĩ gì..."></textarea>
+<div class="fb-user">
+  <img src="https://i.pravatar.cc/50" class="avatar">
+  <div>
+    <div class="name">Admin</div>
+    <div class="privacy">Bạn bè</div>
+  </div>
+</div>
 
-    <!-- preview ảnh -->
-    <div id="previewBox" class="fb-preview"></div>
+<textarea id="captionInput" class="fb-text"
+  placeholder="Bạn đang nghĩ gì..."></textarea>
 
-    <!-- add media -->
-    <div class="fb-add">
-      <span>Thêm ảnh vào bài viết</span>
-      <label class="fb-img-btn">
-        <i data-lucide="camera"></i>
-        <input type="file" id="imageInput" multiple accept="image/*">
-      </label>
-    </div>
+<div id="previewBox" class="fb-preview"></div>
 
-    <!-- post button -->
-    <button class="fb-post-btn" onclick="createPost()">Đăng</button>
-    <div class="upload-progress">
+<div class="fb-add">
+  <span>Thêm ảnh vào bài viết</span>
+  <label class="fb-img-btn">
+    <i data-lucide="camera"></i>
+    <input type="file" id="imageInput" multiple accept="image/*">
+  </label>
+</div>
+
+<button class="fb-post-btn" onclick="createPost()">Đăng</button>
+
+<div class="upload-progress">
   <div id="uploadBar"></div>
 </div>
+
 
   </div>
 </div>
 
- <!-- COMMENT MODAL -->
+<!-- COMMENT MODAL -->
+
 <div id="commentModal" class="modal" style="display:none;">
   <div class="comment-box">
 
-    <div class="comment-header">
-      Bình luận
-      <span onclick="closeComment()">✕</span>
-    </div>
 
-    <div id="commentList" class="comment-list">
-      <div class="comment-item">
-        <b>Admin</b> Chúc mừng năm mới 🎉
-      </div>
-    </div>
+<div class="comment-header">
+  Bình luận
+  <span onclick="closeComment()">✕</span>
+</div>
 
-    <div class="comment-input">
-      <input id="commentText" placeholder="Viết bình luận...">
-      <button onclick="addComment()">Gửi</button>
-    </div>
+<div id="commentList" class="comment-list">
+  <div class="comment-item">
+    <b>Admin</b> Chúc mừng năm mới 🎉
+  </div>
+</div>
+
+<div class="comment-input">
+  <input id="commentText" placeholder="Viết bình luận...">
+  <button onclick="addComment()">Gửi</button>
+</div>
+
 
   </div>
 </div>
 
 <div id="photoViewer" class="modal">
-
   <div style="position:relative">
-
     <img id="viewerImg" style="
       max-width:90vw;
       max-height:90vh;
       border-radius:12px;
       box-shadow:0 20px 60px rgba(0,0,0,0.7);
     ">
-
     <div class="viewer-arrow left" onclick="viewerSlide(-1)">‹</div>
     <div class="viewer-arrow right" onclick="viewerSlide(1)">›</div>
-
   </div>
-
 </div>
 
-<!--=====FORM ĐĂNG NHẬP=====-->
+<!-- LOGIN -->
+
 <div id="authPopup" class="auth-overlay">
 
   <div class="auth-box">
 
-    <span class="auth-close" onclick="closeAuth()">✕</span>
 
-    <h3 id="authTitle">Đăng nhập</h3>
+<span class="auth-close" onclick="closeAuth()">✕</span>
 
-    <!-- user login -->
-    <div id="userLogin" class="login-form">
+<h3 id="authTitle">Đăng nhập</h3>
 
+<div id="userLogin" class="login-form">
   <input id="userEmail" placeholder="Tài khoản (email)">
-
   <div class="pass-wrap">
     <input id="userPass" type="password" placeholder="Mật khẩu">
     <span class="toggle-pass" onclick="toggleUserPass()">👁</span>
   </div>
-
   <button class="btn-main" onclick="loginUser()">Đăng nhập</button>
   <button class="btn-sub" onclick="registerUser()">Đăng ký</button>
-
 </div>
 
-
-    <!-- Admin login -->
-    <div id="adminLogin" style="display:none;">
-
+<div id="adminLogin" style="display:none;">
   <input id="adminEmail" placeholder="Email admin">
-
   <div class="pass-wrap">
     <input id="adminPass" type="password" placeholder="Mật khẩu">
     <span class="toggle-pass" onclick="toggleAdminPass()">👁</span>
   </div>
-
   <button onclick="loginAdmin()">Đăng nhập Admin</button>
+</div>
+
+  </div>
 
 </div>
 
 <div id="toast"></div>
 
-<!-- ================= SCRIPT ================= -->
 <script>
 window.addEventListener("DOMContentLoaded",()=>{
   lucide.createIcons();
@@ -402,12 +405,14 @@ window.addEventListener("DOMContentLoaded",()=>{
 <script>
 window.addEventListener("load",()=>{
   const loader=document.querySelector(".loader");
-  if(!loader) return;
-  loader.style.opacity="0";
-  setTimeout(()=>loader.style.display="none",500);
+  if(loader){
+    loader.style.opacity="0";
+    setTimeout(()=>loader.style.display="none",500);
+  }
 });
 </script>
 
 <script type="module" src="script.js"></script>
+
 </body>
 </html>
