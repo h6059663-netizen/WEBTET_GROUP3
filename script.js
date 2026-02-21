@@ -1,3 +1,42 @@
+
+
+/* ===== FIREBASE PERFORMANCE PATCH (SAFE) ===== */
+
+let _lastPostDoc = null;
+
+async function loadPostsBatch(db, renderPost, batchSize=5){
+  const postsRef = collection(db,"posts");
+  let q;
+
+  if(_lastPostDoc){
+    q = query(postsRef, orderBy("createdAt","desc"), startAfter(_lastPostDoc), limit(batchSize));
+  }else{
+    q = query(postsRef, orderBy("createdAt","desc"), limit(batchSize));
+  }
+
+  const snap = await getDocs(q);
+  if(!snap.empty){
+    _lastPostDoc = snap.docs[snap.docs.length-1];
+  }
+
+  snap.forEach(doc=>renderPost(doc));
+}
+
+/* safe like counter update */
+async function updateLikeCount(postRef, delta){
+  await updateDoc(postRef,{ likeCount: increment(delta) });
+}
+
+/* listen only comments of one post */
+function listenPostComments(db, postId, render){
+  const q = query(
+    collection(db,"comments"),
+    where("postId","==",postId),
+    orderBy("createdAt","asc")
+  );
+  return onSnapshot(q,snap=>render(snap.docs));
+}
+
 const ADMIN_EMAILS = [
   "group3-12a1@gmail.com"
 ];
@@ -29,7 +68,10 @@ import {
   arrayUnion,
   arrayRemove,
   setDoc,
-  onSnapshot
+  onSnapshot,
+  limit, 
+  startAfter, 
+  where
 } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
 import {
@@ -90,42 +132,111 @@ function setActiveMenu(index){
 
 
 /* ================= REEL ================= */
-const observer=new IntersectionObserver(entries=>{
-  entries.forEach(entry=>{
-    const iframe=entry.target.querySelector("iframe");
+/* ================= REEL SYSTEM PRO ================= */
+
+// mở khóa âm thanh sau lần chạm đầu tiên
+let soundUnlocked = false;
+
+// click bất kỳ video → unlock âm thanh toàn trang
+document.addEventListener("click", () => {
+
+  if(soundUnlocked) return;
+  soundUnlocked = true;
+
+  document.querySelectorAll(".reel iframe").forEach(f=>{
+    f.contentWindow.postMessage(
+      '{"event":"command","func":"unMute","args":[]}',
+      "*"
+    );
+  });
+
+});
+
+
+// IntersectionObserver reels chuẩn
+const observer = new IntersectionObserver(entries => {
+
+  entries.forEach(entry => {
+
+    const iframe = entry.target.querySelector("iframe");
     if(!iframe) return;
 
     if(entry.isIntersecting){
 
-  // mute toàn bộ video khác
-  document.querySelectorAll(".reel iframe").forEach(f=>{
-    f.contentWindow.postMessage(
-      '{"event":"command","func":"mute","args":""}',
-      '*'
-    );
+      // play video khi vào màn hình
+      iframe.contentWindow.postMessage(
+        '{"event":"command","func":"playVideo","args":[]}',
+        '*'
+      );
+
+      // nếu đã unlock âm thanh thì bật tiếng
+      if(soundUnlocked){
+        iframe.contentWindow.postMessage(
+          '{"event":"command","func":"unMute","args":[]}',
+          '*'
+        );
+      }
+
+    }else{
+
+      // pause khi rời màn hình
+      iframe.contentWindow.postMessage(
+        '{"event":"command","func":"pauseVideo","args":[]}',
+        '*'
+      );
+
+    }
+
   });
 
-  // play + bật tiếng video hiện tại
-  iframe.contentWindow.postMessage(
-    '{"event":"command","func":"playVideo","args":""}',
-    '*'
-  );
+},{ threshold: 0.6 });
 
-  iframe.contentWindow.postMessage(
-    '{"event":"command","func":"unMute","args":""}',
-    '*'
-  );
 
-}else{
+// load reels
+function loadReels(){
 
-  iframe.contentWindow.postMessage(
-    '{"event":"command","func":"pauseVideo","args":""}',
-    '*'
-  );
+  const feed = document.getElementById("reelFeed");
+  if(!feed) return;
 
+  if(feed.dataset.loaded) return;
+
+  // clear phòng trường hợp reload
+  feed.innerHTML="";
+
+  const reelVideos=[
+    "0a5cN7QbjPw",
+    "WctNaJ8eVU4",
+    "WZniV_YJdDg",
+    "t3hT1wiYJL0",
+    "7muntW1jTSo",
+    "TPPNz4nGQAA",
+    "PPY9dOh0MSo",
+    "BtokXHbWkws",
+    "TrPk-_UbvPw",
+    "tt3fMjlMUgQ"
+  ];
+
+  reelVideos.forEach(id=>{
+    feed.insertAdjacentHTML("beforeend",`
+      <div class="reel">
+        <iframe
+          loading="lazy"
+          src="https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1"
+          allow="autoplay; encrypted-media; fullscreen"
+          allowfullscreen>
+        </iframe>
+        <div class="reel-gradient"></div>
+      </div>
+    `);
+  });
+
+  // gắn observer cho từng reel
+  feed.querySelectorAll(".reel").forEach(r=>{
+    observer.observe(r);
+  });
+
+  feed.dataset.loaded=true;
 }
-  });
-},{threshold:0.7});
 
 /* ================= MODAL CREATE ================= */
 function openModal(){
@@ -152,54 +263,6 @@ window.handleCreateClick = handleCreateClick;
 function closeModal(){
   document.getElementById("createModal").style.display="none";
 }
-function loadReels(){
-
-  const feed=document.getElementById("reelFeed");
-  if(!feed) return;
-
-  if(feed.dataset.loaded) return;
-
-  const reelVideos=["0a5cN7QbjPw","WctNaJ8eVU4","WZniV_YJdDg","t3hT1wiYJL0","7muntW1jTSo","TPPNz4nGQAA","PPY9dOh0MSo","BtokXHbWkws","TrPk-_UbvPw","tt3fMjlMUgQ"];
-
-  reelVideos.forEach(id=>{
-    feed.insertAdjacentHTML("beforeend",`
-      <div class="reel">
-        <iframe
-          src="https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=1&mute=1&playsinline=1"
-          allow="autoplay; encrypted-media"
-          allowfullscreen></iframe>
-        <div class="reel-gradient"></div>
-      </div>
-    `);
-  });
-
-  document.querySelectorAll(".reel").forEach(r=>observer.observe(r));
-
-  document.addEventListener("click", e => {
-
-  const reel = e.target.closest(".reel");
-  if(!reel) return;
-
-  const iframe = reel.querySelector("iframe");
-  if(!iframe) return;
-
-  // bật tiếng
-  iframe.contentWindow.postMessage(
-    '{"event":"command","func":"unMute","args":""}',
-    "*"
-  );
-
-  // đảm bảo video đang play
-  iframe.contentWindow.postMessage(
-    '{"event":"command","func":"playVideo","args":""}',
-    "*"
-  );
-
-});
-
-  feed.dataset.loaded=true;
-}
-
 
 /* ================= PREVIEW IMAGE ================= */
 document.addEventListener("change",e=>{
@@ -215,6 +278,7 @@ document.addEventListener("change",e=>{
 
       const img=document.createElement("img");
       img.src=URL.createObjectURL(file);
+      img.loading="lazy";
       wrap.appendChild(img);
 
       if(i===3 && files.length>4){
@@ -371,9 +435,9 @@ if(files.length===1){
 
   /* ===== HIỂN THỊ TRÊN WEB ===== */
   const html=`
-  <div class="post-card" data-post="${id}">
+  <div class="post-card" data-id="${id}">
     <div class="post-header">
-      <img src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg" class="avatar">
+      <img loading="lazy" src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg" class="avatar">
       <div><h4>Nhóm 3</h4><span>Vừa xong</span></div>
     </div>
 
@@ -556,6 +620,12 @@ window.addComment = addComment;
 window.openProfileTab = openProfileTab;
 
 /*---LOAD BÀI---*/
+function preloadImage(src){
+  if(!src) return;
+  const img = new Image();
+  img.src = src;
+}
+
 async function loadPosts(){
 
   const home=document.getElementById("home");
@@ -564,7 +634,9 @@ async function loadPosts(){
   const q=query(collection(db,"posts"),orderBy("createdAt","desc"));
   const snap=await getDocs(q);
 
-  snap.forEach(doc=>{
+  const docs = snap.docs;
+
+  docs.forEach((doc,i)=>{
 
     const data=doc.data();
     const docId=doc.id;
@@ -572,7 +644,7 @@ async function loadPosts(){
     const html=`
     <div class="post-card" data-id="${docId}">
       <div class="post-header">
-        <img src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg" class="avatar">
+        <img loading="lazy" src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg" class="avatar">
         <div><h4>${data.user||"User"}</h4><span>Mới đăng</span></div>
       </div>
       <div class="post-menu">
@@ -592,7 +664,7 @@ async function loadPosts(){
 <div class="post-carousel" data-index="0">
 
   <div class="carousel-track">
-    ${data.images.map(i=>`<img src="${i}">`).join("")}
+    ${data.images.map(i=>`<img loading="lazy" src="${i}">`).join("")}
   </div>
 
   <div class="carousel-arrow left" onclick="slidePost(this,-1)">‹</div>
@@ -609,7 +681,7 @@ async function loadPosts(){
 `: data.images && data.images.length===1 ? `
 
 <div class="post-image">
-  <img src="${data.images[0]}">
+  <img loading="lazy" src="${data.images[0]}">
 </div>
 
 ` : ""}
@@ -633,6 +705,12 @@ async function loadPosts(){
     `;
 
     home.insertAdjacentHTML("beforeend",html);
+    // preload 2 bài phía dưới
+for(let j=1;j<=2;j++){
+  const nextDoc = docs[i+j];
+  const nextImg = nextDoc?.data()?.images?.[0];
+  if(nextImg) preloadImage(nextImg);
+}
   });
 
   home.querySelectorAll(".post-carousel").forEach(c=>{
@@ -929,8 +1007,8 @@ async function addComment(){
 
   // 👇 load lại comment ngay
   openCommentFromBtn(
-    document.querySelector(`.post-card[data-id="${currentPost}"] .action`)
-  );
+  document.querySelector(`.post-card[data-id="${currentPost}"] [data-lucide="message-circle"]`).closest(".action")
+);
 
   // 👇 load lại feed để update số comment
   loadPosts();
@@ -1412,7 +1490,7 @@ onSnapshot(statsRef,snap=>{
   try{
 
     // nếu tab này đã tính rồi thì thôi
-    if(sessionStorage.getItem("visitCounted")) return;
+    if(localStorage.getItem("visitedBefore")) return;
 
     const snap = await getDoc(statsRef);
 
@@ -1425,7 +1503,7 @@ onSnapshot(statsRef,snap=>{
     }
 
     // đánh dấu tab này đã tính visit
-    sessionStorage.setItem("visitCounted","1");
+    localStorage.setItem("visitedBefore","1");
 
   }catch(e){
     console.log("Visit lỗi",e);
@@ -1467,3 +1545,177 @@ showPage = function(pageId){
 
 /* chạy lúc load trang */
 window.addEventListener("DOMContentLoaded",updateHeaderVisibility);
+
+/* ===== TET FESTIVAL EFFECT ===== */
+
+const canvas = document.getElementById("tetCanvas");
+const ctx = canvas.getContext("2d");
+
+let W,H;
+function resize(){
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = 300;
+}
+resize();
+window.addEventListener("resize",resize);
+
+let rockets=[], sparks=[], petals=[], lixis=[];
+let running=true;
+
+/* ==== ROCKET ==== */
+function spawnRocket(){
+  rockets.push({
+    x:Math.random()*W,
+    y:H,
+    vy:-(4+Math.random()*2),
+    color:`hsl(${Math.random()*360},90%,60%)`
+  });
+}
+
+/* ==== EXPLOSION ==== */
+function explode(x,y,color){
+
+  // tia sáng
+  for(let i=0;i<70;i++){
+    sparks.push({
+      x,y,
+      vx:(Math.random()-0.5)*4,
+      vy:(Math.random()-0.5)*4,
+      life:70,
+      color
+    });
+  }
+
+  // cánh mai / đào
+  const flowerColor = Math.random()>0.5 ? "#ffd43b" : "#ff6b9d";
+
+  for(let i=0;i<55;i++){
+    petals.push({
+      x,y,
+      vx:(Math.random()-0.5)*2,
+      vy:(Math.random()-0.5)*2,
+      size:2+Math.random()*3,
+      life:120,
+      color:flowerColor
+    });
+  }
+}
+
+/* ==== LÌ XÌ ==== */
+function spawnLiXi(){
+  lixis.push({
+    x:Math.random()*W,
+    y:-30,
+    vy:1+Math.random(),
+    rot:Math.random()*6.28,
+    vr:(Math.random()-0.5)*0.05
+  });
+}
+
+/* ==== LOOP ==== */
+function loop(){
+
+  ctx.clearRect(0,0,W,H);
+
+  // rockets
+  rockets.forEach((r,i)=>{
+    r.y+=r.vy;
+
+    ctx.fillStyle=r.color;
+    ctx.beginPath();
+    ctx.arc(r.x,r.y,3,0,6.28);
+    ctx.fill();
+
+    if(r.y<80+Math.random()*100){
+      explode(r.x,r.y,r.color);
+      rockets.splice(i,1);
+    }
+  });
+
+  // sparks
+  sparks.forEach((s,i)=>{
+    s.x+=s.vx;
+    s.y+=s.vy;
+    s.vy+=0.03;
+    s.life--;
+
+    ctx.globalAlpha=s.life/70;
+    ctx.fillStyle=s.color;
+    ctx.fillRect(s.x,s.y,2,2);
+    ctx.globalAlpha=1;
+
+    if(s.life<=0) sparks.splice(i,1);
+  });
+
+  // petals
+  petals.forEach((p,i)=>{
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.vy+=0.01;
+    p.life--;
+
+    ctx.globalAlpha=p.life/120;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.ellipse(p.x,p.y,p.size,p.size*1.5,0,0,6.28);
+    ctx.fill();
+    ctx.globalAlpha=1;
+
+    if(p.life<=0) petals.splice(i,1);
+  });
+
+  // lì xì
+  lixis.forEach((l,i)=>{
+    l.y+=l.vy;
+    l.rot+=l.vr;
+
+    ctx.save();
+    ctx.translate(l.x,l.y);
+    ctx.rotate(l.rot);
+
+    ctx.fillStyle="#d90429";
+    ctx.fillRect(-8,-12,16,24);
+
+    ctx.fillStyle="#ffd43b";
+    ctx.fillRect(-5,-6,10,12);
+
+    ctx.restore();
+
+    if(l.y>H+40) lixis.splice(i,1);
+  });
+
+  if(running) requestAnimationFrame(loop);
+}
+loop();
+
+/* ==== CONTROL ==== */
+let timerRocket=null;
+let timerLiXi=null;
+
+function startTet(){
+  if(!timerRocket){
+    running=true;
+    timerRocket=setInterval(spawnRocket,450);
+    timerLiXi=setInterval(spawnLiXi,900);
+    loop();
+  }
+}
+
+function stopTet(){
+  running=false;
+  clearInterval(timerRocket);
+  clearInterval(timerLiXi);
+  timerRocket=null;
+  timerLiXi=null;
+}
+
+/* ==== SCROLL ==== */
+window.addEventListener("load",startTet);
+
+window.addEventListener("scroll",()=>{
+  if(window.pageYOffset>60){
+    stopTet();
+  }else{
+    startTet();
+  }
+});
