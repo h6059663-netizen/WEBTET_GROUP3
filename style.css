@@ -5,7 +5,7 @@ body{
   font-family:'Poppins',sans-serif;
   background:#800000;
   color:#2D2D2D;
-  transition:0.4s ease;
+  transition:background .4s ease,color .3s ease;
 }
 
 
@@ -20,6 +20,7 @@ body{
   z-index:100000;
 }
 .flower{
+  will-change:transform;
   font-size:90px;
   animation:float 2s ease-in-out infinite;
 }
@@ -253,8 +254,8 @@ main{
 
   border:1px solid rgba(29, 29, 29, 0.544);
   box-shadow:
-    0 25px 60px rgba(0,0,0,0.25),
-    0 6px 16px rgba(0,0,0,0.12);
+    0 25px 60px #d4af374b,
+    0 6px 16px #d4af372c;
 }
 
 .post-image{
@@ -302,12 +303,20 @@ main{
 
 .post-header h4{
   margin:0;
-  font-size:16px;
+  font-size:18px;
+}
+
+.post-card p{
+  font-size:15px;
+  line-height:1.55;
+  letter-spacing:0.1px;
+  margin:10px 0 14px;
+  color:#2D2D2D;
 }
 
 .post-header span{
   display:block;      /* bắt buộc xuống dòng */
-  font-size:13px;
+  font-size:12px;
   color:#777;
   margin-top:2px;
 }
@@ -714,7 +723,7 @@ main{
 .comment-box{
   width:480px;
   max-width:95%;
-  background:#fff;
+  background:#FDF5E6;
   border-radius:18px;
   padding:18px;
   display:flex;
@@ -732,7 +741,7 @@ main{
   justify-content:space-between;
   align-items:center;
   padding-bottom:6px;
-  border-bottom:1px solid #eee;
+  border-bottom:1px solid #D4AF37;
 }
 
 .comment-header span{
@@ -770,7 +779,7 @@ main{
 
 /* bubble */
 .comment-item div{
-  background:#f2f3f5;
+  background:#d4af3721;
   padding:8px 12px;
   border-radius:14px;
   font-size:14px;
@@ -788,7 +797,7 @@ main{
 .comment-input{
   display:flex;
   gap:8px;
-  border-top:1px solid #eee;
+  border-top:1px solid #D4AF37;
   padding-top:10px;
 }
 
@@ -796,7 +805,8 @@ main{
   flex:1;
   padding:10px 14px;
   border-radius:999px;
-  border:1px solid #ddd;
+  background:#FDF5E6;
+  border:1px solid #D4AF37;
   outline:none;
   font-size:14px;
 }
@@ -848,7 +858,7 @@ main{
   width:120px;
   height:120px;
   border-radius:50%;
-  border:4px solid white;
+  border:4px solid #D4AF37;
   object-fit:cover;
   background:white;
   position:relative;
@@ -1690,7 +1700,7 @@ input:checked + .slider:before {
 }
 
 .visit-row b{
-  color:FFFDD0;
+  color:#FFFDD0;
 }
 
 .online-row{
@@ -1719,26 +1729,32 @@ input:checked + .slider:before {
 }
 
 @keyframes pulseOnline{
-  0%{transform:scale(1);opacity:.8}
-  70%{transform:scale(1.7);opacity:0}
-  100%{opacity:0}
-}
-
-/* vòng sáng nhấp nháy */
-.dot-online::after{
-  content:"";
-  position:absolute;
-  inset:-4px;
-  border-radius:50%;
-  border:2px solid rgba(34,197,94,0.6);
-  animation:pulseOnline 1.6s infinite;
-}
-
-@keyframes pulseOnline{
   0%{ transform:scale(.8); opacity:1; }
   70%{ transform:scale(1.8); opacity:0; }
   100%{ opacity:0; }
 }
+
+/*=====HIỆU ỨNG PHÁO NỔ=====*/
+#tetCanvas{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:300px;
+  pointer-events:none;
+  z-index:5;
+}
+
+.hide-top #tetCanvas{
+  opacity:0;
+  transition:opacity .4s;
+}
+
+.hide-top #fireCanvas{
+  opacity:0;
+  transition:opacity .4s;
+}
+
 /* ===== DARK MODE ===== */
 
 body.dark{
@@ -1751,6 +1767,24 @@ body.dark .post-card{
   background:#12181f;
   border-color:#1f2a36;
   box-shadow:0 10px 40px rgba(0,0,0,0.6);
+}
+
+
+
+.dark .post-card{
+  color:#f1f3f5;   /* màu chữ sáng dễ đọc */
+}
+
+.dark .post-card p{
+  color:#e9ecef;
+}
+
+.dark .post-card span{
+  color:#adb5bd;
+}
+
+.dark .post-card h4{
+  color:#ffffff;
 }
 
 /* modal */
@@ -1825,8 +1859,13 @@ body.dark .comment-list{
 }
 
 body.dark .comment-item{
+  background:#161c23;
+  color:#1e2630;
+}
+
+body.dark .comment-item div{
   background:#1e2630;
-  color:#e6e6e6;
+  color:white;
 }
 
 body.dark .comment-input{
@@ -1836,7 +1875,7 @@ body.dark .comment-input{
 body.dark .comment-input input{
   background:#1e2630;
   border:1px solid #2d3742;
-  color:#fff;
+  color:#e6e6e6;
 }
 
 body.dark .comment-input input::placeholder{
@@ -1849,6 +1888,16 @@ body.dark .comment-input button{
 
 body.dark .comment-input button:hover{
   background:#c81e52;
+}
+
+body.dark .c-del{
+  color:#e6e6e6;        /* đỏ sáng dễ thấy trên nền tối */
+  opacity:0.9;
+}
+
+body.dark .c-del:hover{
+  color:#ff3b6b;
+  text-shadow:0 0 6px rgba(255,80,120,0.6); /* glow nhẹ */
 }
 
 .top-logo{
@@ -1879,6 +1928,15 @@ body.dark .comment-input button:hover{
     height:46px;
   }
 
+  .mobile-logo img{
+    height:44px;
+    filter:
+      drop-shadow(0 0 2px rgba(255,215,0,0.75))
+      drop-shadow(0 0 6px rgba(255,215,0,0.55))
+      contrast(1.15)
+      saturate(1.15);
+  }
+
   /* ẩn logo sidebar */
   .sidebar .top-logo{
     display:none;
@@ -1887,7 +1945,7 @@ body.dark .comment-input button:hover{
   /* box user + dark mode nằm ngang phải */
   #userBox{
     position:fixed;
-    top:8px;
+    top:2px;
     right:10px;
     display:flex !important;
     flex-direction:row;
@@ -1989,6 +2047,9 @@ body.dark .comment-input button:hover{
     border-radius:0;
   }
 
+  .reel-gradient{
+  pointer-events:none;
+}
   /* ===== COMMENT POPUP TRƯỢT LÊN ===== */
   .comment-box{
     position:fixed;
@@ -2064,4 +2125,18 @@ body.hide-page-header .mobile-header-item{
   }
 
 }
+  
+}
+
+
+/* ===== PERFORMANCE PATCH (SAFE) ===== */
+.post-image img,
+.carousel-track img,
+.reel iframe,
+.logo-text img{
+  will-change:transform;
+  transform:translateZ(0);
+}
+.reel-feed{
+  -webkit-overflow-scrolling:touch;
 }
