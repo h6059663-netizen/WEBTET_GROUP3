@@ -104,6 +104,8 @@ let isAdmin=false;
 /* ================= GLOBAL ================= */
 let postCounter = 0;
 let currentPost = null;
+let cachedPosts = [];
+let cacheActive = false;
 
 
 
@@ -120,8 +122,13 @@ function showPage(pageId){
 
 
 function goHome(){
+
   showPage('home');
   setActiveMenu(0);
+
+  if(cachedPosts.length){
+    renderCachedPosts();
+  }
 }
 
 function setActiveMenu(index){
@@ -381,10 +388,60 @@ async function openCommentFromBtn(btn){
 
 function closeComment(){
   document.getElementById("commentModal").style.display="none";
+
+  if(unsubscribeComments){
+    unsubscribeComments();
+    unsubscribeComments=null;
+  }
 }
 
 
 /*==Created post==*/
+
+async function optimizeImage(file, maxSize=1600, quality=0.8){
+
+  return new Promise((resolve)=>{
+
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = e=>{
+      img.src = e.target.result;
+    };
+
+    img.onload = ()=>{
+
+      let w = img.width;
+      let h = img.height;
+
+      // resize giữ tỉ lệ
+      if(w>h && w>maxSize){
+        h = h * (maxSize/w);
+        w = maxSize;
+      }else if(h>maxSize){
+        w = w * (maxSize/h);
+        h = maxSize;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img,0,0,w,h);
+
+      // convert sang WebP + nén
+      canvas.toBlob(blob=>{
+        resolve(new File([blob], file.name.replace(/\.\w+$/,".webp"), {
+          type:"image/webp"
+        }));
+      },"image/webp",quality);
+    };
+
+    reader.readAsDataURL(file);
+
+  });
+}
 
 async function createPost(){
 
@@ -491,20 +548,22 @@ try{
 
   const selected = files.slice(0,10);
 
-  // upload ảnh mới
-  const bar = document.getElementById("uploadBar");
+  // upload ảnh mới (song song nhanh hơn)
+const bar = document.getElementById("uploadBar");
 bar.parentElement.style.display="block";
 bar.style.width="0%";
 
-let uploaded = 0;
 const total = selected.length;
+let uploaded = 0;
 
-for(const file of selected){
+await Promise.all(selected.map(async (file,i)=>{
 
-  const path = "posts/" + Date.now() + "_" + file.name;
+  const optimized = await optimizeImage(file);   // 👈 thêm dòng này
+
+  const path = "posts/" + Date.now() + "_" + i + ".webp";
   const storageRef = ref(storage,path);
 
-  await uploadBytes(storageRef,file);
+  await uploadBytes(storageRef,optimized);
   const url = await getDownloadURL(storageRef);
 
   urls.push(url);
@@ -512,7 +571,8 @@ for(const file of selected){
 
   uploaded++;
   bar.style.width = (uploaded/total*100) + "%";
-}
+
+}));
 
   // ===== EDIT MODE =====
   if(window.editingPostId){
@@ -554,6 +614,10 @@ for(const file of selected){
     likesCount:0,
     likedBy:[]
   });
+  cachedPosts = [];
+  lastPostDoc = null;
+  loadPosts();
+  
 
   console.log("Đã lưu nhiều ảnh");
 
@@ -636,8 +700,11 @@ function preloadImage(src){
 let lastPostDoc = null;
 let loadingPosts = false;
 
-async function loadPosts(){
 
+async function loadPosts(){
+  if(!lastPostDoc){
+  cachedPosts=[];   // reset khi load từ đầu
+}
   if(loadingPosts) return;
   loadingPosts = true;
 
@@ -669,6 +736,7 @@ async function loadPosts(){
   }
 
   docs.forEach((doc,i)=>{
+    cachedPosts.push({id:doc.id,data:doc.data()});
 
     const data=doc.data();
     const docId=doc.id;
@@ -747,6 +815,86 @@ async function loadPosts(){
   loadingPosts=false;
 }
 
+function renderCachedPosts(){
+
+  const home=document.getElementById("home");
+  home.innerHTML="";
+
+  cachedPosts.forEach(p=>{
+
+    const data=p.data;
+    const docId=p.id;
+
+    const imagesHTML =
+      data.images?.length>1
+      ? `
+      <div class="post-carousel" data-index="0">
+        <div class="carousel-track">
+          ${data.images.map(i=>`<img loading="lazy" src="${i}">`).join("")}
+        </div>
+        <div class="carousel-arrow left" onclick="slidePost(this,-1)">‹</div>
+        <div class="carousel-arrow right" onclick="slidePost(this,1)">›</div>
+        <div class="carousel-dots">
+          ${data.images.map((_,i)=>`<span class="${i===0?"active":""}"></span>`).join("")}
+        </div>
+        <div class="carousel-count">1/${data.images.length}</div>
+      </div>
+      `
+      : data.images?.[0]
+      ? `<div class="post-image"><img loading="lazy" src="${data.images[0]}"></div>`
+      : "";
+
+    const html=`
+    <div class="post-card" data-id="${docId}">
+      <div class="post-header">
+        <img loading="lazy"
+        src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg"
+        class="avatar">
+        <div>
+          <h4>${data.user||"User"}</h4>
+          <span>Mới đăng</span>
+        </div>
+      </div>
+
+      <p>${data.caption||""}</p>
+
+      ${imagesHTML}
+
+      <div class="post-actions-bar">
+        <div class="left-actions">
+          <div class="action like ${data.likedBy?.includes(currentUser?.uid) ? "liked" : ""}"
+          onclick="likePost(this,'${docId}')">
+            <i data-lucide="heart"></i>
+            <span>${data.likesCount||0}</span>
+          </div>
+
+          <div class="action comment-btn"
+          data-post="${docId}"
+          onclick="openCommentFromBtn(this)">
+            <i data-lucide="message-circle"></i>
+            <span>0</span>
+          </div>
+
+          <div class="action" onclick="copyPostLink(this)">
+            <i data-lucide="send"></i>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    `;
+
+    home.insertAdjacentHTML("beforeend",html);
+    listenCommentCount(docId);
+  });
+
+  lucide.createIcons();
+
+  home.querySelectorAll(".post-carousel").forEach(c=>{
+    fixCarouselHeight(c);
+  });
+}
+
 function listenCommentCount(postId){
 
   const q=query(
@@ -768,14 +916,23 @@ function listenCommentCount(postId){
 window.addEventListener("DOMContentLoaded",()=>{
   loadPosts();
 });
-window.addEventListener("scroll",()=>{
-  const nearBottom =
-    window.innerHeight + window.scrollY >=
-    document.body.offsetHeight - 600;
+let scrollTimer=null;
 
-  if(nearBottom){
-    loadPosts();
-  }
+window.addEventListener("scroll",()=>{
+
+  clearTimeout(scrollTimer);
+
+  scrollTimer=setTimeout(()=>{
+
+    const nearBottom =
+      window.innerHeight + window.scrollY >=
+      document.body.offsetHeight - 600;
+
+    if(nearBottom){
+      loadPosts();
+    }
+
+  },120); // delay nhỏ, không lag UX
 });
 
 /*-----XOÁ BÀI-----*/
@@ -798,6 +955,8 @@ async function deletePost(id,paths=[]){
     }
 
     await deleteDoc(doc(db,"posts",id));
+    cachedPosts=[];
+    lastPostDoc=null;
     loadPosts();
 
   }catch(err){
