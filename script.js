@@ -163,33 +163,46 @@ const observer = new IntersectionObserver(entries => {
 
     if(entry.isIntersecting){
 
-      // play video khi vào màn hình
-      iframe.contentWindow.postMessage(
-        '{"event":"command","func":"playVideo","args":[]}',
-        '*'
-      );
+      setTimeout(()=>{
 
-      // nếu đã unlock âm thanh thì bật tiếng
-      if(soundUnlocked){
         iframe.contentWindow.postMessage(
-          '{"event":"command","func":"unMute","args":[]}',
-          '*'
+          JSON.stringify({
+            event:"command",
+            func:"playVideo",
+            args:[]
+          }),
+          "*"
         );
-      }
+
+        if(soundUnlocked){
+          iframe.contentWindow.postMessage(
+            JSON.stringify({
+              event:"command",
+              func:"unMute",
+              args:[]
+            }),
+            "*"
+          );
+        }
+
+      },500); // 👈 delay cho iframe load API
 
     }else{
 
-      // pause khi rời màn hình
       iframe.contentWindow.postMessage(
-        '{"event":"command","func":"pauseVideo","args":[]}',
-        '*'
+        JSON.stringify({
+          event:"command",
+          func:"pauseVideo",
+          args:[]
+        }),
+        "*"
       );
 
     }
 
   });
 
-},{ threshold: 0.6 });
+},{ threshold: 0.5 });
 
 
 // load reels
@@ -223,7 +236,6 @@ function loadReels(){
           loading="lazy"
           src="https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1"
           allow="autoplay; encrypted-media; fullscreen"
-          allowfullscreen>
         </iframe>
         <div class="reel-gradient"></div>
       </div>
@@ -310,65 +322,60 @@ function copyPostLink(el){
     el.innerHTML="Đã copy ✔";
     setTimeout(()=>{
       el.innerHTML=old;
-      lucide.createIcons();
+      requestIdleCallback(()=>lucide.createIcons());
     },1200);
   });
 }
 
 
 /* ================= COMMENT ================= */
+let unsubscribeComments=null;
+
 async function openCommentFromBtn(btn){
 
   const post = btn.closest(".post-card");
   currentPost = post.dataset.id;
 
   document.getElementById("commentModal").style.display="flex";
-
-  const list = document.getElementById("commentList");
+  const list=document.getElementById("commentList");
   list.innerHTML="Đang tải...";
 
-  try{
+  if(unsubscribeComments) unsubscribeComments();
 
-    const snap = await getDocs(query(collection(db,"posts")));
-    
-    const docSnap = snap.docs.find(d=>d.id===currentPost);
-    if(!docSnap){
-      list.innerHTML="Không tìm thấy bài";
-      return;
-    }
+  const q=query(
+    collection(db,"comments"),
+    where("postId","==",currentPost),
+    orderBy("createdAt","asc")
+  );
 
-    const data = docSnap.data();
-    const comments = data.comments || [];
+  unsubscribeComments = onSnapshot(q,snap=>{
 
-    if(!comments.length){
+    if(snap.empty){
       list.innerHTML="<i>Chưa có bình luận</i>";
       return;
     }
 
     list.innerHTML="";
 
-    comments
-      .sort((a,b)=>a.time-b.time)
-      .forEach(c=>{
-        list.insertAdjacentHTML("beforeend",`
-  <div class="comment-item">
-    <div class="c-body">
-      <b>${c.user}</b> ${c.text}
+    snap.forEach(doc=>{
+  const c=doc.data();
+  const id=doc.id;
+
+  list.insertAdjacentHTML("beforeend",`
+    <div class="comment-item">
+      <div class="c-body">
+        <b>${c.user}</b> ${c.text}
+      </div>
+
+      ${isAdmin || c.uid===currentUser?.uid
+        ? `<span class="c-del" onclick="deleteComment('${id}')">✕</span>`
+        : ""
+      }
     </div>
+  `);
+});
 
-    ${isAdmin || c.user === (currentUser?.displayName || currentUser?.email)
-      ? `<span class="c-del" onclick="deleteComment(${c.time})">✕</span>`
-      : ""
-    }
-  </div>
-`);
-
-      });
-
-  }catch(err){
-    console.error(err);
-    list.innerHTML="Lỗi tải comment";
-  }
+  });
 }
 
 
@@ -626,15 +633,40 @@ function preloadImage(src){
   img.src = src;
 }
 
+let lastPostDoc = null;
+let loadingPosts = false;
+
 async function loadPosts(){
 
+  if(loadingPosts) return;
+  loadingPosts = true;
+
   const home=document.getElementById("home");
-  home.innerHTML="";   // clear feed
 
-  const q=query(collection(db,"posts"),orderBy("createdAt","desc"));
+  let q;
+
+  if(lastPostDoc){
+    q=query(
+      collection(db,"posts"),
+      orderBy("createdAt","desc"),
+      startAfter(lastPostDoc),
+      limit(5)
+    );
+  }else{
+    home.innerHTML="";
+    q=query(
+      collection(db,"posts"),
+      orderBy("createdAt","desc"),
+      limit(5)
+    );
+  }
+
   const snap=await getDocs(q);
+  const docs=snap.docs;
 
-  const docs = snap.docs;
+  if(!snap.empty){
+    lastPostDoc=snap.docs[snap.docs.length-1];
+  }
 
   docs.forEach((doc,i)=>{
 
@@ -660,32 +692,22 @@ async function loadPosts(){
       <p>${data.caption||""}</p>
 
       ${data.images && data.images.length>1 ? `
-
 <div class="post-carousel" data-index="0">
-
   <div class="carousel-track">
     ${data.images.map(i=>`<img loading="lazy" src="${i}">`).join("")}
   </div>
-
   <div class="carousel-arrow left" onclick="slidePost(this,-1)">‹</div>
   <div class="carousel-arrow right" onclick="slidePost(this,1)">›</div>
-
   <div class="carousel-dots">
     ${data.images.map((_,i)=>`<span class="${i===0?"active":""}"></span>`).join("")}
   </div>
-
   <div class="carousel-count">1/${data.images.length}</div>
-
 </div>
-
 `: data.images && data.images.length===1 ? `
-
 <div class="post-image">
   <img loading="lazy" src="${data.images[0]}">
 </div>
-
 ` : ""}
-
 
       <div class="post-actions-bar">
         <div class="left-actions">
@@ -693,8 +715,9 @@ async function loadPosts(){
           onclick="likePost(this,'${docId}')">
             <i data-lucide="heart"></i><span>${data.likesCount || 0}</span>
           </div>
-          <div class="action" onclick="openCommentFromBtn(this)">
-            <i data-lucide="message-circle"></i><span>${data.comments?.length||0}</span>
+          <div class="action comment-btn" data-post="${docId}" onclick="openCommentFromBtn(this)">
+            <i data-lucide="message-circle"></i>
+            <span>0</span>
           </div>
           <div class="action" onclick="copyPostLink(this)">
             <i data-lucide="send"></i>
@@ -705,22 +728,54 @@ async function loadPosts(){
     `;
 
     home.insertAdjacentHTML("beforeend",html);
-    // preload 2 bài phía dưới
-for(let j=1;j<=2;j++){
-  const nextDoc = docs[i+j];
-  const nextImg = nextDoc?.data()?.images?.[0];
-  if(nextImg) preloadImage(nextImg);
-}
+    listenCommentCount(docId);
+
+    // preload 2 bài tiếp
+    for(let j=1;j<=2;j++){
+      const nextDoc=docs[i+j];
+      const nextImg=nextDoc?.data()?.images?.[0];
+      if(nextImg) preloadImage(nextImg);
+    }
   });
 
   home.querySelectorAll(".post-carousel").forEach(c=>{
-  fixCarouselHeight(c);
-});
+    fixCarouselHeight(c);
+  });
 
   lucide.createIcons();
+
+  loadingPosts=false;
 }
+
+function listenCommentCount(postId){
+
+  const q=query(
+    collection(db,"comments"),
+    where("postId","==",postId)
+  );
+
+  onSnapshot(q,snap=>{
+
+    const post=document.querySelector(`.post-card[data-id="${postId}"]`);
+    if(!post) return;
+
+    const span=post.querySelector(".comment-btn span");
+    if(span) span.innerText=snap.size;
+
+  });
+}
+
 window.addEventListener("DOMContentLoaded",()=>{
   loadPosts();
+});
+window.addEventListener("scroll",()=>{
+  const nearBottom =
+    window.innerHeight + window.scrollY >=
+    document.body.offsetHeight - 600;
+
+  if(nearBottom){
+    loadPosts();
+  }
 });
 
 /*-----XOÁ BÀI-----*/
@@ -755,9 +810,9 @@ window.deletePost = deletePost;
 
 /* ===== CAROUSEL SWIPE ===== */
 
-document.addEventListener("pointerdown",startDrag);
-document.addEventListener("pointermove",dragging);
-document.addEventListener("pointerup",endDrag);
+document.addEventListener("pointerdown", startDrag, { passive:true });
+document.addEventListener("pointermove", dragging, { passive:true });
+document.addEventListener("pointerup", endDrag, { passive:true });
 
 let startX=0;
 let currentCarousel=null;
@@ -847,28 +902,28 @@ window.slidePost = slidePost;
 
 /* ===== LOAD ẢNH VÀO ALBUM TRANG CÁ NHÂN ===== */
 
+let profileLoaded=false;
+
 async function loadProfilePhotos(){
+
+  if(profileLoaded) return;
+  profileLoaded=true;
 
   const grid = document.getElementById("profilePhotos");
   if(!grid) return;
 
-  grid.innerHTML="";
-
-  const q=query(collection(db,"posts"),orderBy("createdAt","desc"));
+  const q=query(collection(db,"posts"),orderBy("createdAt","desc"),limit(20));
   const snap=await getDocs(q);
 
   snap.forEach(doc=>{
-
     const data=doc.data();
-
-    if(data.images && data.images.length){
+    if(data.images){
       data.images.forEach(img=>{
-        grid.insertAdjacentHTML("beforeend",`
-         <img src="${img}" onclick="openViewer('${img}')">
-       `);
+        grid.insertAdjacentHTML("beforeend",
+          `<img src="${img}" onclick="openViewer('${img}')">`
+        );
       });
     }
-
   });
 }
 
@@ -988,32 +1043,32 @@ async function likePost(btn,id){
 async function addComment(){
 
   if(!currentUser){
-  openAuth();
-  return;
-}
+    openAuth();
+    return;
+  }
 
-  const text=document.getElementById("commentText").value.trim();
+  const text = document.getElementById("commentText").value.trim();
   if(!text) return;
 
-  await updateDoc(doc(db,"posts",currentPost),{
-    comments: arrayUnion({
-      user:currentUser?.displayName || currentUser?.email || "User",
-      text:text,
-      time:Date.now()
-    })
-  });
+  try{
 
-  document.getElementById("commentText").value="";
+    // 👉 lưu vào collection comments (KHÔNG còn lưu trong post nữa)
+    await addDoc(collection(db,"comments"),{
+      postId: currentPost,
+      user: currentUser?.displayName || currentUser?.email || "User",
+      uid: currentUser.uid,
+      text: text,
+      createdAt: Date.now()
+    });
 
-  // 👇 load lại comment ngay
-  openCommentFromBtn(
-  document.querySelector(`.post-card[data-id="${currentPost}"] [data-lucide="message-circle"]`).closest(".action")
-);
+    // reset input
+    document.getElementById("commentText").value="";
 
-  // 👇 load lại feed để update số comment
-  loadPosts();
+  }catch(err){
+    console.error(err);
+    alert("Lỗi gửi bình luận");
+  }
 }
-
 
 function spawnBanhTet(btn){
 
@@ -1074,11 +1129,10 @@ async function editPost(id){
     return;
   }
 
-  const snap = await getDocs(query(collection(db,"posts")));
-  const dataDoc = snap.docs.find(d=>d.id===id);
-  if(!dataDoc) return;
+  const snap = await getDoc(doc(db,"posts",id));
+  if(!snap.exists()) return;
 
-  const data = dataDoc.data();
+  const data = snap.data();
 
   openModal();
 
@@ -1129,9 +1183,14 @@ function fixCarouselHeight(carousel){
   if(!firstImg) return;
 
   const applyHeight = ()=>{
+  requestAnimationFrame(()=>{
     const h = firstImg.getBoundingClientRect().height;
-    if(h>0) carousel.style.height = h + "px";
-  };
+    if(h>0){
+      carousel.style.height = h + "px";
+    }
+  });
+
+};
 
   // nếu ảnh chưa load
   if(!firstImg.complete){
@@ -1388,28 +1447,16 @@ function showToast(text){
 window.showToast=showToast;
 
 /*===XOÁ COMMENT===*/
-async function deleteComment(time){
+async function deleteComment(id){
 
   if(!confirm("Xoá bình luận này?")) return;
 
-  const snap = await getDocs(query(collection(db,"posts")));
-  const docSnap = snap.docs.find(d=>d.id===currentPost);
-  if(!docSnap) return;
-
-  const data = docSnap.data();
-  const comments = data.comments || [];
-
-  const newComments = comments.filter(c=>c.time !== time);
-
-  await updateDoc(doc(db,"posts",currentPost),{
-    comments:newComments
-  });
-
-  openCommentFromBtn(
-    document.querySelector(`.post-card[data-id="${currentPost}"] .action`)
-  );
-
-  loadPosts();
+  try{
+    await deleteDoc(doc(db,"comments",id));
+  }catch(err){
+    console.error(err);
+    alert("Xoá bình luận thất bại");
+  }
 }
 
 window.deleteComment = deleteComment;
@@ -1447,7 +1494,7 @@ async function pingOnline(){
 // ping ngay khi load
 window.addEventListener("load",()=>{
   pingOnline();
-  setInterval(pingOnline,15000);
+  setInterval(pingOnline,25000);
 });
 
 // realtime đếm user online
