@@ -1,42 +1,4 @@
 
-
-/* ===== FIREBASE PERFORMANCE PATCH (SAFE) ===== */
-
-let _lastPostDoc = null;
-
-async function loadPostsBatch(db, renderPost, batchSize=5){
-  const postsRef = collection(db,"posts");
-  let q;
-
-  if(_lastPostDoc){
-    q = query(postsRef, orderBy("createdAt","desc"), startAfter(_lastPostDoc), limit(batchSize));
-  }else{
-    q = query(postsRef, orderBy("createdAt","desc"), limit(batchSize));
-  }
-
-  const snap = await getDocs(q);
-  if(!snap.empty){
-    _lastPostDoc = snap.docs[snap.docs.length-1];
-  }
-
-  snap.forEach(doc=>renderPost(doc));
-}
-
-/* safe like counter update */
-async function updateLikeCount(postRef, delta){
-  await updateDoc(postRef,{ likeCount: increment(delta) });
-}
-
-/* listen only comments of one post */
-function listenPostComments(db, postId, render){
-  const q = query(
-    collection(db,"comments"),
-    where("postId","==",postId),
-    orderBy("createdAt","asc")
-  );
-  return onSnapshot(q,snap=>render(snap.docs));
-}
-
 const ADMIN_EMAILS = [
   "group3-12a1@gmail.com"
 ];
@@ -82,7 +44,7 @@ import {
   deleteObject,
 } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-storage.js";
 
-/* ===== FIREBASE INIT (THÊM MỚI) ===== */
+/* ===== FIREBASE INIT ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyDsNB3G_JSO6r7oCliOwHvEwq_KiICf9DI",
   authDomain: "tet-demo-a9c31.firebaseapp.com",
@@ -107,6 +69,33 @@ let currentPost = null;
 let cachedPosts = [];
 let cacheActive = false;
 
+/* ===== FIX 1: Map lưu unsubscribe của từng listenCommentCount để tránh memory leak ===== */
+const commentCountUnsubs = new Map();
+
+
+/* ===== FIX: Escape HTML chống XSS ===== */
+function escapeHTML(str){
+  if(!str) return "";
+  return String(str)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
+/* ================= THỜI GIAN THẬT (FIX 5) ================= */
+function timeAgo(ts){
+  const diff = Date.now() - ts;
+  const s = Math.floor(diff/1000);
+  if(s < 60) return "Vừa xong";
+  const m = Math.floor(s/60);
+  if(m < 60) return m + " phút trước";
+  const h = Math.floor(m/60);
+  if(h < 24) return h + " giờ trước";
+  const d = Math.floor(h/24);
+  return d + " ngày trước";
+}
 
 
 /* ================= PAGE ================= */
@@ -192,7 +181,7 @@ const observer = new IntersectionObserver(entries => {
           );
         }
 
-      },500); // 👈 delay cho iframe load API
+      },500);
 
     }else{
 
@@ -220,7 +209,6 @@ function loadReels(){
 
   if(feed.dataset.loaded) return;
 
-  // clear phòng trường hợp reload
   feed.innerHTML="";
 
   const reelVideos=[
@@ -249,7 +237,6 @@ function loadReels(){
     `);
   });
 
-  // gắn observer cho từng reel
   feed.querySelectorAll(".reel").forEach(r=>{
     observer.observe(r);
   });
@@ -365,22 +352,22 @@ async function openCommentFromBtn(btn){
     list.innerHTML="";
 
     snap.forEach(doc=>{
-  const c=doc.data();
-  const id=doc.id;
+      const c=doc.data();
+      const id=doc.id;
 
-  list.insertAdjacentHTML("beforeend",`
-    <div class="comment-item">
-      <div class="c-body">
-        <b>${c.user}</b> ${c.text}
-      </div>
+      list.insertAdjacentHTML("beforeend",`
+        <div class="comment-item">
+          <div class="c-body">
+            <b>${escapeHTML(c.user)}</b> ${escapeHTML(c.text)}
+          </div>
 
-      ${isAdmin || c.uid===currentUser?.uid
-        ? `<span class="c-del" onclick="deleteComment('${id}')">✕</span>`
-        : ""
-      }
-    </div>
-  `);
-});
+          ${isAdmin || c.uid===currentUser?.uid
+            ? `<span class="c-del" onclick="deleteComment('${id}')">✕</span>`
+            : ""
+          }
+        </div>
+      `);
+    });
 
   });
 }
@@ -400,21 +387,24 @@ function closeComment(){
 
 async function optimizeImage(file, maxSize=1600, quality=0.8){
 
-  return new Promise((resolve)=>{
+  return new Promise((resolve, reject)=>{
 
     const img = new Image();
     const reader = new FileReader();
 
+    reader.onerror = ()=> reject(new Error("Không đọc được file ảnh"));
+
     reader.onload = e=>{
       img.src = e.target.result;
     };
+
+    img.onerror = ()=> reject(new Error("Không load được ảnh"));
 
     img.onload = ()=>{
 
       let w = img.width;
       let h = img.height;
 
-      // resize giữ tỉ lệ
       if(w>h && w>maxSize){
         h = h * (maxSize/w);
         w = maxSize;
@@ -430,7 +420,6 @@ async function optimizeImage(file, maxSize=1600, quality=0.8){
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img,0,0,w,h);
 
-      // convert sang WebP + nén
       canvas.toBlob(blob=>{
         resolve(new File([blob], file.name.replace(/\.\w+$/,".webp"), {
           type:"image/webp"
@@ -449,52 +438,46 @@ async function createPost(){
   const files=[...document.getElementById("imageInput").files];
 
   if(!files.length && !window.editingPostId){
-  alert("Chọn ít nhất 1 ảnh");
-  return;
-}
-
+    alert("Chọn ít nhất 1 ảnh");
+    return;
+  }
 
   postCounter++;
   const id=postCounter;
 
   let imagesHTML="";
 
-if(files.length===1){
+  if(files.length===1){
 
-  imagesHTML=`
-  <div class="post-image">
-    <img src="${URL.createObjectURL(files[0])}">
+    imagesHTML=`
+    <div class="post-image">
+      <img src="${URL.createObjectURL(files[0])}">
+    </div>`;
+
+  }else{
+
+    let slides="";
+    let dots="";
+
+    files.forEach((f,i)=>{
+      slides+=`<img src="${URL.createObjectURL(f)}">`;
+      dots+=`<span class="${i===0?"active":""}"></span>`;
+    });
+
+    imagesHTML=`
+  <div class="post-carousel" data-index="0">
+    <div class="carousel-track">
+      ${slides}
+    </div>
+    <div class="carousel-arrow left" onclick="slidePost(this,-1)">‹</div>
+    <div class="carousel-arrow right" onclick="slidePost(this,1)">›</div>
+    <div class="carousel-dots">
+      ${dots}
+    </div>
+    <div class="carousel-count">1/${files.length}</div>
   </div>`;
 
-}else{
-
-  let slides="";
-  let dots="";
-
-  files.forEach((f,i)=>{
-    slides+=`<img src="${URL.createObjectURL(f)}">`;
-    dots+=`<span class="${i===0?"active":""}"></span>`;
-  });
-
-  imagesHTML=`
-<div class="post-carousel" data-index="0">
-
-  <div class="carousel-track">
-    ${slides}
-  </div>
-
-  <div class="carousel-arrow left" onclick="slidePost(this,-1)">‹</div>
-  <div class="carousel-arrow right" onclick="slidePost(this,1)">›</div>
-
-  <div class="carousel-dots">
-    ${dots}
-  </div>
-
-  <div class="carousel-count">1/${files.length}</div>
-
-</div>`;
-
-}
+  }
 
 
   /* ===== HIỂN THỊ TRÊN WEB ===== */
@@ -531,105 +514,101 @@ if(files.length===1){
   </div>
   `;
 
-  document.getElementById("home")
-    .insertAdjacentHTML("afterbegin",html);
-    const newPost = document.getElementById("home").firstElementChild;
-const carousel = newPost.querySelector(".post-carousel");
-if(carousel) fixCarouselHeight(carousel);
+  document.getElementById("home").insertAdjacentHTML("afterbegin",html);
+  const newPost = document.getElementById("home").firstElementChild;
+  const carousel = newPost.querySelector(".post-carousel");
+  if(carousel) fixCarouselHeight(carousel);
 
   lucide.createIcons();
 
 
-/* ===== LƯU FIREBASE + UPLOAD ẢNH ===== */
-try{
+  /* ===== LƯU FIREBASE + UPLOAD ẢNH ===== */
+  try{
 
-  const urls=[];     // ảnh mới
-  const paths=[];    // path mới
+    const urls=[];
+    const paths=[];
 
-  const selected = files.slice(0,10);
+    const selected = files.slice(0,10);
 
-  // upload ảnh mới (song song nhanh hơn)
-const bar = document.getElementById("uploadBar");
-bar.parentElement.style.display="block";
-bar.style.width="0%";
+    const bar = document.getElementById("uploadBar");
+    bar.parentElement.style.display="block";
+    bar.style.width="0%";
 
-const total = selected.length;
-let uploaded = 0;
+    const total = selected.length;
+    let uploaded = 0;
 
-await Promise.all(selected.map(async (file,i)=>{
+    await Promise.all(selected.map(async (file,i)=>{
 
-  const optimized = await optimizeImage(file);   // 👈 thêm dòng này
+      const optimized = await optimizeImage(file);
 
-  const path = "posts/" + Date.now() + "_" + i + ".webp";
-  const storageRef = ref(storage,path);
+      const path = "posts/" + Date.now() + "_" + i + ".webp";
+      const storageRef = ref(storage,path);
 
-  await uploadBytes(storageRef,optimized);
-  const url = await getDownloadURL(storageRef);
+      await uploadBytes(storageRef,optimized);
+      const url = await getDownloadURL(storageRef);
 
-  urls.push(url);
-  paths.push(path);
+      urls.push(url);
+      paths.push(path);
 
-  uploaded++;
-  bar.style.width = (uploaded/total*100) + "%";
+      uploaded++;
+      bar.style.width = (uploaded/total*100) + "%";
 
-}));
+    }));
 
-  // ===== EDIT MODE =====
-  if(window.editingPostId){
+    /* ===== EDIT MODE ===== */
+    if(window.editingPostId){
 
-    const finalImages = [
-      ...(window.oldImages || []),
-      ...urls
-    ];
+      const finalImages = [
+        ...(window.oldImages || []),
+        ...urls
+      ];
 
-    const finalPaths = [
-      ...(window.oldPaths || []),
-      ...paths
-    ];
+      const finalPaths = [
+        ...(window.oldPaths || []),
+        ...paths
+      ];
 
-    await updateDoc(doc(db,"posts",window.editingPostId),{
-      caption: caption,
-      images: finalImages,
-      paths: finalPaths
+      await updateDoc(doc(db,"posts",window.editingPostId),{
+        caption: caption,
+        images: finalImages,
+        paths: finalPaths
+      });
+
+      window.editingPostId=null;
+      window.oldImages=null;
+      window.oldPaths=null;
+
+      loadPosts();
+      closeModal();
+      return;
+    }
+
+    /* ===== NEW POST ===== */
+    await addDoc(collection(db,"posts"),{
+      caption:caption,
+      images:urls,
+      paths:paths,
+      createdAt:Date.now(),
+      user:"Nhóm 3",
+      likes:0,
+      comments:[],
+      likesCount:0,
+      likedBy:[]
     });
-
-    window.editingPostId=null;
-    window.oldImages=null;
-    window.oldPaths=null;
-
+    cachedPosts = [];
+    lastPostDoc = null;
     loadPosts();
-    closeModal();
-    return;
+
+    console.log("Đã lưu nhiều ảnh");
+
+  }catch(err){
+    console.error(err);
+    alert("lỗi");
   }
 
-  // ===== NEW POST =====
-  await addDoc(collection(db,"posts"),{
-    caption:caption,
-    images:urls,
-    paths:paths,
-    createdAt:Date.now(),
-    user:"Nhóm 3",
-    likes:0,
-    comments:[],
-    likesCount:0,
-    likedBy:[]
-  });
-  cachedPosts = [];
-  lastPostDoc = null;
-  loadPosts();
-  
-
-  console.log("Đã lưu nhiều ảnh");
-
-}catch(err){
-  console.error(err);
-  alert("lỗi");
-}
-
-window.editingPostId=null;
-window.oldImages=null;
-window.oldPaths=null;
-
+  window.editingPostId=null;
+  window.oldImages=null;
+  window.oldPaths=null;
 
   /* ===== RESET FORM ===== */
   document.getElementById("captionInput").value="";
@@ -637,27 +616,23 @@ window.oldPaths=null;
   document.getElementById("previewBox").innerHTML="";
   closeModal();
 
-  bar.style.width="0%";
-bar.parentElement.style.display="none";
+  document.getElementById("uploadBar").style.width="0%";
+  document.getElementById("uploadBar").parentElement.style.display="none";
 }
 
 
 function openProfileTab(tab,el){
 
-  // Ẩn tất cả section
   document.querySelectorAll(".profile-section").forEach(s=>{
     s.style.display="none";
   });
 
-  // bỏ active tất cả tab
   document.querySelectorAll(".profile-tab").forEach(t=>{
     t.classList.remove("active");
   });
 
-  // bật tab đang bấm
   el.classList.add("active");
 
-  // hiện section tương ứng
   if(tab==="photos"){
     document.getElementById("photosTab").style.display="block";
     loadProfilePhotos();
@@ -667,6 +642,7 @@ function openProfileTab(tab,el){
     document.getElementById("membersTab").style.display="block";
   }
 }
+
 function openMemberProfile(name,role,img){
 
   document.getElementById("mpName").innerText=name;
@@ -676,7 +652,6 @@ function openMemberProfile(name,role,img){
   showPage("memberProfile");
 }
 
-// 👇 expose functions cho HTML onclick dùng được
 window.showPage = showPage;
 window.goHome = goHome;
 window.setActiveMenu = setActiveMenu;
@@ -703,8 +678,8 @@ let loadingPosts = false;
 
 async function loadPosts(){
   if(!lastPostDoc){
-  cachedPosts=[];   // reset khi load từ đầu
-}
+    cachedPosts=[];
+  }
   if(loadingPosts) return;
   loadingPosts = true;
 
@@ -741,15 +716,17 @@ async function loadPosts(){
     const data=doc.data();
     const docId=doc.id;
 
+    /* ===== FIX 5: Hiện thời gian thật ===== */
+    const timeStr = data.createdAt ? timeAgo(data.createdAt) : "Mới đăng";
+
     const html=`
     <div class="post-card" data-id="${docId}">
       <div class="post-header">
         <img loading="lazy" src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg" class="avatar">
-        <div><h4>${data.user||"User"}</h4><span>Mới đăng</span></div>
+        <div><h4>${escapeHTML(data.user)||"User"}</h4><span>${timeStr}</span></div>
       </div>
       <div class="post-menu">
         <div class="menu-btn" onclick="togglePostMenu(this)">⋯</div>
-
          <div class="menu-popup">
            <div onclick='editPost("${docId}")'> <i data-lucide="pencil"></i> Sửa bài</div>
              <div onclick='deletePost("${docId}", ${JSON.stringify(data.paths||[])})'>
@@ -757,7 +734,7 @@ async function loadPosts(){
          </div>
       </div>
 
-      <p>${data.caption||""}</p>
+      <p>${escapeHTML(data.caption)||""}</p>
 
       ${data.images && data.images.length>1 ? `
 <div class="post-carousel" data-index="0">
@@ -825,6 +802,9 @@ function renderCachedPosts(){
     const data=p.data;
     const docId=p.id;
 
+    /* ===== FIX 5: Hiện thời gian thật ===== */
+    const timeStr = data.createdAt ? timeAgo(data.createdAt) : "Mới đăng";
+
     const imagesHTML =
       data.images?.length>1
       ? `
@@ -851,12 +831,12 @@ function renderCachedPosts(){
         src="https://i.ibb.co/pvFN0yZX/z7525960835881-251907a56c25d2989a4109022ddc6935.jpg"
         class="avatar">
         <div>
-          <h4>${data.user||"User"}</h4>
-          <span>Mới đăng</span>
+          <h4>${escapeHTML(data.user)||"User"}</h4>
+          <span>${timeStr}</span>
         </div>
       </div>
 
-      <p>${data.caption||""}</p>
+      <p>${escapeHTML(data.caption)||""}</p>
 
       ${imagesHTML}
 
@@ -895,27 +875,42 @@ function renderCachedPosts(){
   });
 }
 
+/* ===== FIX 2: listenCommentCount — unsubscribe listener cũ trước khi tạo mới ===== */
 function listenCommentCount(postId){
+
+  // Nếu đã có listener cho post này → unsubscribe trước
+  if(commentCountUnsubs.has(postId)){
+    commentCountUnsubs.get(postId)();
+    commentCountUnsubs.delete(postId);
+  }
 
   const q=query(
     collection(db,"comments"),
     where("postId","==",postId)
   );
 
-  onSnapshot(q,snap=>{
+  const unsub = onSnapshot(q,snap=>{
 
     const post=document.querySelector(`.post-card[data-id="${postId}"]`);
-    if(!post) return;
+    if(!post){
+      // post không còn trong DOM → dọn luôn listener
+      unsub();
+      commentCountUnsubs.delete(postId);
+      return;
+    }
 
     const span=post.querySelector(".comment-btn span");
     if(span) span.innerText=snap.size;
 
   });
+
+  commentCountUnsubs.set(postId, unsub);
 }
 
 window.addEventListener("DOMContentLoaded",()=>{
   loadPosts();
 });
+
 let scrollTimer=null;
 
 window.addEventListener("scroll",()=>{
@@ -932,7 +927,7 @@ window.addEventListener("scroll",()=>{
       loadPosts();
     }
 
-  },120); // delay nhỏ, không lag UX
+  },120);
 });
 
 /*-----XOÁ BÀI-----*/
@@ -957,6 +952,13 @@ async function deletePost(id,paths=[]){
     await deleteDoc(doc(db,"posts",id));
     cachedPosts=[];
     lastPostDoc=null;
+
+    /* ===== FIX 2: Dọn listener của bài vừa xoá ===== */
+    if(commentCountUnsubs.has(id)){
+      commentCountUnsubs.get(id)();
+      commentCountUnsubs.delete(id);
+    }
+
     loadPosts();
 
   }catch(err){
@@ -1009,7 +1011,6 @@ function endDrag(e){
   dots.forEach(d=>d.classList.remove("active"));
   if(dots[index]) dots[index].classList.add("active");
 
-  /* ===== HIỆN SỐ ẢNH ===== */
   const counter = currentCarousel.querySelector(".carousel-count");
   if(counter){
     counter.innerText = (index+1) + "/" + images.length;
@@ -1040,7 +1041,6 @@ function slidePost(btn,dir){
   carousel.dataset.index=index;
   track.style.transform=`translateX(-${index*100}%)`;
 
-  /* ===== HIỆN SỐ ẢNH ===== */
   const counter = carousel.querySelector(".carousel-count");
   if(counter){
     counter.innerText = (index+1) + "/" + images.length;
@@ -1093,7 +1093,6 @@ window.loadProfilePhotos = loadProfilePhotos;
 document.getElementById("photoViewer")
 ?.addEventListener("click",(e)=>{
 
-  // nếu bấm nền tối thì mới đóng
   if(e.target.id==="photoViewer"){
     document.getElementById("photoViewer").style.display="none";
   }
@@ -1111,7 +1110,6 @@ function openViewer(src){
   const modal=document.getElementById("photoViewer");
   const img=document.getElementById("viewerImg");
 
-  // lấy tất cả ảnh trong album
   viewerImages=[...document.querySelectorAll("#profilePhotos img")]
     .map(i=>i.src);
 
@@ -1161,16 +1159,15 @@ if(viewer){
 async function likePost(btn,id){
 
   if(!currentUser){
-  openAuth();
-  return;
-}
+    openAuth();
+    return;
+  }
 
   const span = btn.querySelector("span");
   let count = parseInt(span.innerText) || 0;
 
   const liked = btn.classList.contains("liked");
 
-  // 👇 toggle UI ngay
   btn.classList.toggle("liked");
 
   if(liked){
@@ -1186,7 +1183,6 @@ async function likePost(btn,id){
 
     span.innerText = count + 1;
 
-    // 👇 hiệu ứng bánh chạy NGAY
     spawnBanhTet(btn);
 
     updateDoc(doc(db,"posts",id),{
@@ -1195,8 +1191,6 @@ async function likePost(btn,id){
     });
   }
 }
-
-
 
 
 async function addComment(){
@@ -1211,7 +1205,6 @@ async function addComment(){
 
   try{
 
-    // 👉 lưu vào collection comments (KHÔNG còn lưu trong post nữa)
     await addDoc(collection(db,"comments"),{
       postId: currentPost,
       user: currentUser?.displayName || currentUser?.email || "User",
@@ -1220,7 +1213,6 @@ async function addComment(){
       createdAt: Date.now()
     });
 
-    // reset input
     document.getElementById("commentText").value="";
 
   }catch(err){
@@ -1261,7 +1253,6 @@ function spawnBanhTet(btn){
 /*---NÚT 3 CHẤM---*/
 function togglePostMenu(btn){
 
-  // đóng menu khác
   document.querySelectorAll(".menu-popup").forEach(m=>{
     if(m!==btn.nextElementSibling) m.style.display="none";
   });
@@ -1270,7 +1261,6 @@ function togglePostMenu(btn){
   menu.style.display = menu.style.display==="block" ? "none" : "block";
 }
 
-// click ngoài thì đóng menu
 document.addEventListener("click",e=>{
   if(!e.target.closest(".post-menu")){
     document.querySelectorAll(".menu-popup")
@@ -1335,28 +1325,32 @@ async function removeOldImage(index){
 }
 window.removeOldImage = removeOldImage;
 
-/*---CỐ ĐỊNH CHIỀU CAO THEO ẢNH ĐẦU---*/
+/* ===== FIX 6: fixCarouselHeight — đợi ảnh load xong mới đo height ===== */
 function fixCarouselHeight(carousel){
 
   const firstImg = carousel.querySelector(".carousel-track img");
   if(!firstImg) return;
 
   const applyHeight = ()=>{
-  requestAnimationFrame(()=>{
-    const h = firstImg.getBoundingClientRect().height;
-    if(h>0){
-      carousel.style.height = h + "px";
-    }
-  });
+    requestAnimationFrame(()=>{
+      const h = firstImg.getBoundingClientRect().height;
+      if(h > 0){
+        carousel.style.height = h + "px";
+      }else{
+        // thử lại nếu vẫn là 0
+        setTimeout(()=>{
+          const h2 = firstImg.getBoundingClientRect().height;
+          if(h2 > 0) carousel.style.height = h2 + "px";
+        }, 200);
+      }
+    });
+  };
 
-};
-
-  // nếu ảnh chưa load
-  if(!firstImg.complete){
-    firstImg.addEventListener("load",applyHeight);
+  if(!firstImg.complete || firstImg.naturalHeight === 0){
+    firstImg.addEventListener("load", applyHeight, { once: true });
+    firstImg.addEventListener("error", ()=>{}, { once: true });
   }else{
-    // ảnh đã cache
-    requestAnimationFrame(applyHeight);
+    applyHeight();
   }
 }
 
@@ -1374,9 +1368,8 @@ document.addEventListener("pointerup",function(e){
     const likeBtn = post.querySelector(".action.like");
 
     if(likeBtn && !likeBtn.classList.contains("liked")){
-
-      likeBtn.click();        // like thật
-      spawnBigBanh(post);     // 👈 BÁNH TO GIỮA ẢNH
+      likeBtn.click();
+      spawnBigBanh(post);
     }
   }
 
@@ -1391,23 +1384,18 @@ function spawnBigBanh(post){
 
   banh.innerHTML=`
 <svg viewBox="0 0 100 100" width="95" height="95">
-
   <defs>
     <linearGradient id="banhGlow" x1="0" x2="1">
       <stop offset="0%" stop-color="#2e7d32"/>
       <stop offset="100%" stop-color="#43a047"/>
     </linearGradient>
   </defs>
-
   <rect x="10" y="10" width="80" height="80" rx="14"
         fill="url(#banhGlow)" stroke="#ffd54f" stroke-width="6"/>
-
   <line x1="10" y1="50" x2="90" y2="50"
         stroke="#ffd54f" stroke-width="7"/>
-
   <line x1="50" y1="10" x2="50" y2="90"
         stroke="#ffd54f" stroke-width="7"/>
-
 </svg>
 `;
 
@@ -1420,11 +1408,10 @@ function spawnBigBanh(post){
   setTimeout(()=>banh.remove(),800);
 }
 
-/* ===== DARK MODE FIXED ===== */
+/* ===== DARK MODE ===== */
 
 const switchBtn = document.getElementById("switch");
 
-// load trạng thái
 if(localStorage.getItem("theme")==="light"){
   document.body.classList.remove("dark");
   switchBtn.checked = true;
@@ -1433,15 +1420,12 @@ if(localStorage.getItem("theme")==="light"){
   switchBtn.checked = false;
 }
 
-// toggle
 switchBtn.addEventListener("change",()=>{
 
   if(switchBtn.checked){
-    // bật sáng
     document.body.classList.remove("dark");
     localStorage.setItem("theme","light");
   }else{
-    // bật tối
     document.body.classList.add("dark");
     localStorage.setItem("theme","dark");
   }
@@ -1482,8 +1466,6 @@ function loginAdmin(){
   .then(userCredential=>{
 
     currentUser = userCredential.user;
-
-    // 👇 check admin chuẩn
     isAdmin = ADMIN_EMAILS.includes(currentUser.email);
 
     closeAuth();
@@ -1512,11 +1494,10 @@ onAuthStateChanged(auth,user=>{
     document.getElementById("userName").innerText=
       user.displayName || user.email;
 
-    // 👇 check admin chuẩn
     isAdmin = ADMIN_EMAILS.includes(user.email);
     if(isAdmin){
-  document.getElementById("visitBox").style.display="block";
-}
+      document.getElementById("visitBox").style.display="block";
+    }
 
   }else{
 
@@ -1551,7 +1532,7 @@ function registerUser(){
 
   createUserWithEmailAndPassword(auth,email,pass)
   .then(()=>{
-    closeAuth();   // tự login luôn
+    closeAuth();
   })
   .catch(err=>{
     alert(err.message);
@@ -1621,13 +1602,10 @@ async function deleteComment(id){
 window.deleteComment = deleteComment;
 
 
-/* ===== ONLINE SYSTEM CHUẨN ===== */
+/* ===== ONLINE SYSTEM ===== */
 
-// collection online
 const onlineCol = collection(db,"onlineUsers");
 
-// session id an toàn cho mobile + desktop
-// session id cố định cho mỗi thiết bị
 let sessionId = localStorage.getItem("sessionId");
 
 if(!sessionId){
@@ -1638,7 +1616,6 @@ if(!sessionId){
   localStorage.setItem("sessionId",sessionId);
 }
 
-// ping user đang online
 async function pingOnline(){
   try{
     await setDoc(doc(onlineCol,sessionId),{
@@ -1650,23 +1627,22 @@ async function pingOnline(){
   }
 }
 
-// ping ngay khi load
 window.addEventListener("load",()=>{
   pingOnline();
   setInterval(pingOnline,25000);
 });
 
-// realtime đếm user online
-onSnapshot(onlineCol,snap=>{
-  const now = Date.now();
-  let online = 0;
+/* ===== FIX 2: Chỉ đếm user online trong 30s thay vì tải toàn bộ collection ===== */
+/* Query lọc server-side → giảm số document đọc đáng kể */
+const onlineThreshold = Date.now() - 30000;
+const onlineQuery = query(
+  onlineCol,
+  where("lastSeen", ">", onlineThreshold)
+);
 
-  snap.forEach(d=>{
-    if(now - d.data().lastSeen < 30000) online++;
-  });
-
-  const box=document.getElementById("onlineCount");
-  if(box) box.innerText = online;
+onSnapshot(onlineQuery, snap=>{
+  const box = document.getElementById("onlineCount");
+  if(box) box.innerText = snap.size;
 });
 
 function toggleUserMenu(){
@@ -1679,23 +1655,21 @@ document.addEventListener("click",e=>{
     document.getElementById("userMenu").style.display="none";
   }
 });
-/* ===== VISIT COUNT (FIX RELOAD + TỐI ƯU) ===== */
+
+/* ===== VISIT COUNT ===== */
 
 const statsRef = doc(db,"stats","visitors");
 
-// realtime hiển thị visit (chỉ chạy 1 lần)
-onSnapshot(statsRef,snap=>{
-  const data = snap.data();
+/* ===== FIX 3: Dùng getDoc thay vì onSnapshot - không cần realtime cho visit count ===== */
+getDoc(statsRef).then(snap=>{
   const box = document.getElementById("totalCount");
-  if(box) box.innerText = data?.totalVisits || 0;
-});
+  if(box) box.innerText = snap.exists() ? (snap.data()?.totalVisits || 0) : 0;
+}).catch(()=>{});
 
-// tăng visit duy nhất 1 lần mỗi tab mở
 (async ()=>{
 
   try{
 
-    // nếu tab này đã tính rồi thì thôi
     if(localStorage.getItem("visitedBefore")) return;
 
     const snap = await getDoc(statsRef);
@@ -1708,7 +1682,6 @@ onSnapshot(statsRef,snap=>{
       });
     }
 
-    // đánh dấu tab này đã tính visit
     localStorage.setItem("visitedBefore","1");
 
   }catch(e){
@@ -1719,7 +1692,7 @@ onSnapshot(statsRef,snap=>{
 
 window.toggleUserMenu = toggleUserMenu;
 
-/* ===== CHỈ HIỆN HEADER Ở ĐẦU TRANG ===== */
+/* ===== HEADER ẨN KHI SCROLL ===== */
 window.addEventListener("scroll", () => {
 
   if(window.pageYOffset > 60){
@@ -1742,14 +1715,12 @@ function updateHeaderVisibility(){
   }
 }
 
-/* chạy mỗi khi đổi trang */
 const oldShowPage = showPage;
 showPage = function(pageId){
   oldShowPage(pageId);
   updateHeaderVisibility();
 };
 
-/* chạy lúc load trang */
 window.addEventListener("DOMContentLoaded",updateHeaderVisibility);
 
 /* ===== TET FESTIVAL EFFECT ===== */
@@ -1781,7 +1752,6 @@ function spawnRocket(){
 /* ==== EXPLOSION ==== */
 function explode(x,y,color){
 
-  // tia sáng
   for(let i=0;i<70;i++){
     sparks.push({
       x,y,
@@ -1792,7 +1762,6 @@ function explode(x,y,color){
     });
   }
 
-  // cánh mai / đào
   const flowerColor = Math.random()>0.5 ? "#ffd43b" : "#ff6b9d";
 
   for(let i=0;i<55;i++){
@@ -1818,81 +1787,72 @@ function spawnLiXi(){
   });
 }
 
-/* ==== LOOP ==== */
+/* ===== FIX 4: Loop dùng filter thay vì splice trong forEach ===== */
 function loop(){
 
   ctx.clearRect(0,0,W,H);
 
   // rockets
-  rockets.forEach((r,i)=>{
-    r.y+=r.vy;
-
-    ctx.fillStyle=r.color;
+  const explodingRockets = [];
+  rockets = rockets.filter(r=>{
+    r.y += r.vy;
+    ctx.fillStyle = r.color;
     ctx.beginPath();
     ctx.arc(r.x,r.y,3,0,6.28);
     ctx.fill();
-
-    if(r.y<80+Math.random()*100){
-      explode(r.x,r.y,r.color);
-      rockets.splice(i,1);
+    if(r.y < 80 + Math.random()*100){
+      explodingRockets.push(r);
+      return false;
     }
+    return true;
   });
+  explodingRockets.forEach(r=>explode(r.x,r.y,r.color));
 
   // sparks
-  sparks.forEach((s,i)=>{
-    s.x+=s.vx;
-    s.y+=s.vy;
-    s.vy+=0.03;
+  sparks = sparks.filter(s=>{
+    s.x += s.vx;
+    s.y += s.vy;
+    s.vy += 0.03;
     s.life--;
-
-    ctx.globalAlpha=s.life/70;
-    ctx.fillStyle=s.color;
+    ctx.globalAlpha = s.life/70;
+    ctx.fillStyle = s.color;
     ctx.fillRect(s.x,s.y,2,2);
-    ctx.globalAlpha=1;
-
-    if(s.life<=0) sparks.splice(i,1);
+    ctx.globalAlpha = 1;
+    return s.life > 0;
   });
 
   // petals
-  petals.forEach((p,i)=>{
-    p.x+=p.vx;
-    p.y+=p.vy;
-    p.vy+=0.01;
+  petals = petals.filter(p=>{
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.01;
     p.life--;
-
-    ctx.globalAlpha=p.life/120;
-    ctx.fillStyle=p.color;
+    ctx.globalAlpha = p.life/120;
+    ctx.fillStyle = p.color;
     ctx.beginPath();
     ctx.ellipse(p.x,p.y,p.size,p.size*1.5,0,0,6.28);
     ctx.fill();
-    ctx.globalAlpha=1;
-
-    if(p.life<=0) petals.splice(i,1);
+    ctx.globalAlpha = 1;
+    return p.life > 0;
   });
 
   // lì xì
-  lixis.forEach((l,i)=>{
-    l.y+=l.vy;
-    l.rot+=l.vr;
-
+  lixis = lixis.filter(l=>{
+    l.y += l.vy;
+    l.rot += l.vr;
     ctx.save();
     ctx.translate(l.x,l.y);
     ctx.rotate(l.rot);
-
-    ctx.fillStyle="#d90429";
+    ctx.fillStyle = "#d90429";
     ctx.fillRect(-8,-12,16,24);
-
-    ctx.fillStyle="#ffd43b";
+    ctx.fillStyle = "#ffd43b";
     ctx.fillRect(-5,-6,10,12);
-
     ctx.restore();
-
-    if(l.y>H+40) lixis.splice(i,1);
+    return l.y <= H+40;
   });
 
   if(running) requestAnimationFrame(loop);
 }
-loop();
 
 /* ==== CONTROL ==== */
 let timerRocket=null;
